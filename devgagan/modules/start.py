@@ -14,7 +14,6 @@ import asyncio
 from pyrogram import filters, Client
 from devgagan import app
 from config import OWNER_ID
-from devgagan.core.func import subscribe, send_or_edit_help_page
 from pyrogram.types import (
     CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, 
     BotCommand, LabeledPrice, PreCheckoutQuery, Message
