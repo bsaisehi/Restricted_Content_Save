@@ -11,15 +11,20 @@
 # ---------------------------------------------------
 
 import asyncio
+
 from pyrogram import filters, Client
+from pyrogram.types import (
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    BotCommand,
+    LabeledPrice,
+    PreCheckoutQuery,
+    Message
+)
+
 from devgagan import app
 from config import OWNER_ID
-from pyrogram.types import (
-    CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, 
-    BotCommand, LabeledPrice, PreCheckoutQuery, Message
-)
-from pyrogram.raw.functions.bots import SetBotInfo
-from pyrogram.raw.types import InputUserSelf
 
 
 # ===================================================
@@ -27,10 +32,10 @@ from pyrogram.raw.types import InputUserSelf
 # ===================================================
 
 # Put your real UPI ID here
-UPI_ID = "chaudhary18shiva@okaxis"
+UPI_ID = "your_upi_id@okaxis"
 
 # Direct URL of your UPI QR image
-QR_CODE_URL = "https://raw.githubusercontent.com/DevXShiva/Save-Restricted-Bot/refs/heads/main/logo.png"
+QR_CODE_URL = "https://yourdomain.com/path_to_qr.jpg"
 
 
 # ===================================================
