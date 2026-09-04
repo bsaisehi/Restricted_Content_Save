@@ -35,7 +35,7 @@ from config import OWNER_ID
 UPI_ID = "your_upi_id@okaxis"
 
 # Direct URL of your UPI QR image
-QR_CODE_URL = "https://yourdomain.com/path_to_qr.jpg"
+QR_CODE_URL = "https://raw.githubusercontent.com/DevXShiva/Save-Restricted-Bot/refs/heads/main/logo.png"
 
 
 # ===================================================
