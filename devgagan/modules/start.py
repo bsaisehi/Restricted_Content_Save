@@ -5,8 +5,8 @@
 # Author: VoidXDevs
 # Telegram: https://t.me/VoidXDevs
 # Created: 2025-01-11
-# Last Modified: 2026-09-04
-# Version: 2.2.0
+# Last Modified: 2026-09-05
+# Version: 2.3.0
 # License: MIT License
 # ---------------------------------------------------
 
@@ -14,7 +14,6 @@ import asyncio
 
 from pyrogram import filters, Client
 from pyrogram.types import (
-    CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     BotCommand,
@@ -35,50 +34,79 @@ from config import OWNER_ID
 UPI_ID = "your_upi_id@okaxis"
 
 # Direct URL of your UPI QR image
-QR_CODE_URL = "https://raw.githubusercontent.com/DevXShiva/Save-Restricted-Bot/refs/heads/main/logo.png"
+QR_CODE_URL = (
+    "https://raw.githubusercontent.com/"
+    "DevXShiva/Save-Restricted-Bot/"
+    "refs/heads/main/logo.png"
+)
 
 
 # ===================================================
 # PREMIUM PLAN CONFIGURATION
 # ===================================================
 
-# UPI plans
+# ---------------------------------------------------
+# UPI PLANS
+# ---------------------------------------------------
+
 UPI_PLANS = {
     "1": {
-        "name": "1 Month",
-        "months": 1,
-        "amount": 200
+        "name": "1 Day",
+        "days": 1,
+        "amount": 10
     },
-    "3": {
-        "name": "3 Months",
-        "months": 3,
-        "amount": 500
+    "7": {
+        "name": "7 Days",
+        "days": 7,
+        "amount": 60
     },
-    "12": {
-        "name": "1 Year",
-        "months": 12,
-        "amount": 1500
+    "30": {
+        "name": "30 Days",
+        "days": 30,
+        "amount": 150
     }
 }
 
-# Telegram Stars plans
+
+# ---------------------------------------------------
+# TELEGRAM STARS PLANS
+# ---------------------------------------------------
+
 STARS_PLANS = {
     "1": {
-        "name": "1 Month",
-        "months": 1,
-        "stars": 100
+        "name": "1 Day",
+        "days": 1,
+        "stars": 10
     },
-    "3": {
-        "name": "3 Months",
-        "months": 3,
-        "stars": 250
+    "7": {
+        "name": "7 Days",
+        "days": 7,
+        "stars": 50
     },
-    "12": {
-        "name": "1 Year",
-        "months": 12,
-        "stars": 800
+    "30": {
+        "name": "30 Days",
+        "days": 30,
+        "stars": 150
     }
 }
+
+
+# ===================================================
+# TEMPORARY UPI PAYMENT STATE
+# ===================================================
+
+# Stores the selected UPI plan for users who clicked
+# "Send Payment Screenshot".
+#
+# Example:
+# {
+#     123456789: "7"
+# }
+#
+# Note:
+# This is in-memory and resets when the bot restarts.
+
+pending_upi_plans = {}
 
 
 # ===================================================
@@ -86,11 +114,26 @@ STARS_PLANS = {
 # ===================================================
 
 def get_primary_owner():
-    """Return primary owner ID."""
+    """Return primary owner ID safely."""
+
     if isinstance(OWNER_ID, (list, tuple)):
         return OWNER_ID[0]
+
     return OWNER_ID
 
+
+def is_owner(user_id):
+    """Check whether a user is an owner."""
+
+    if isinstance(OWNER_ID, (list, tuple, set)):
+        return user_id in OWNER_ID
+
+    return user_id == OWNER_ID
+
+
+# ===================================================
+# MAIN PAYMENT KEYBOARD
+# ===================================================
 
 def get_main_plan_keyboard():
     return InlineKeyboardMarkup(
@@ -123,25 +166,29 @@ def get_main_plan_keyboard():
     )
 
 
+# ===================================================
+# UPI PLAN KEYBOARD
+# ===================================================
+
 def get_upi_keyboard():
     return InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    "1 Month - ₹200",
+                    "1 Day - ₹10",
                     callback_data="upi_plan_1"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    "3 Months - ₹500",
-                    callback_data="upi_plan_3"
+                    "7 Days - ₹60",
+                    callback_data="upi_plan_7"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    "1 Year - ₹1500",
-                    callback_data="upi_plan_12"
+                    "30 Days - ₹150",
+                    callback_data="upi_plan_30"
                 )
             ],
             [
@@ -154,25 +201,29 @@ def get_upi_keyboard():
     )
 
 
+# ===================================================
+# TELEGRAM STARS PLAN KEYBOARD
+# ===================================================
+
 def get_stars_keyboard():
     return InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    "1 Month - 100 ⭐",
+                    "1 Day - 10 ⭐",
                     callback_data="buy_stars_1"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    "3 Months - 250 ⭐",
-                    callback_data="buy_stars_3"
+                    "7 Days - 50 ⭐",
+                    callback_data="buy_stars_7"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    "1 Year - 800 ⭐",
-                    callback_data="buy_stars_12"
+                    "30 Days - 150 ⭐",
+                    callback_data="buy_stars_30"
                 )
             ],
             [
@@ -191,9 +242,13 @@ def get_stars_keyboard():
 
 @app.on_message(filters.command("set"))
 async def set_commands(_, message):
-    if message.from_user.id not in OWNER_ID:
+
+    if not message.from_user:
+        return
+
+    if not is_owner(message.from_user.id):
         await message.reply(
-            "You are not authorized to use this command."
+            "❌ You are not authorized to use this command."
         )
         return
 
@@ -212,7 +267,7 @@ async def set_commands(_, message):
             BotCommand("transfer", "💘 Gift premium to others"),
             BotCommand("myplan", "⌛ Get your plan details"),
             BotCommand("add", "➕ Add user to premium"),
-            BotCommand("rem", "➖ Remove from premium"),
+            BotCommand("rem", "➖ Remove user from premium"),
             BotCommand("session", "🧵 Generate Pyrogramv2 session"),
             BotCommand("settings", "⚙️ Personalize things"),
             BotCommand("stats", "📊 Get stats of the bot"),
@@ -238,6 +293,7 @@ async def set_commands(_, message):
 help_pages = [
     (
         "📝 **Bot Commands Overview (1/2):**\n\n"
+
         "1. **/add userID**\n"
         "> Add user to premium (Owner only)\n\n"
 
@@ -245,7 +301,8 @@ help_pages = [
         "> Remove user from premium (Owner only)\n\n"
 
         "3. **/transfer userID**\n"
-        "> Transfer premium to your beloved major purpose for resellers (Premium members only)\n\n"
+        "> Transfer premium to your beloved major purpose "
+        "for resellers (Premium members only)\n\n"
 
         "4. **/get**\n"
         "> Get all user IDs (Owner only)\n\n"
@@ -302,6 +359,7 @@ help_pages = [
 
 
 async def send_or_edit_help_page(client, message, page_number):
+
     if page_number < 0 or page_number >= len(help_pages):
         return
 
@@ -323,7 +381,11 @@ async def send_or_edit_help_page(client, message, page_number):
             )
         )
 
-    keyboard = InlineKeyboardMarkup([buttons]) if buttons else None
+    keyboard = (
+        InlineKeyboardMarkup([buttons])
+        if buttons
+        else None
+    )
 
     try:
         await message.delete()
@@ -338,23 +400,30 @@ async def send_or_edit_help_page(client, message, page_number):
 
 @app.on_message(filters.command("help"))
 async def help_command(client, message):
-    # Keep your existing subscribe() function if it exists
+
     try:
         join = await subscribe(client, message)
+
         if join == 1:
             return
+
     except NameError:
         pass
 
-    await send_or_edit_help_page(client, message, 0)
+    await send_or_edit_help_page(
+        client,
+        message,
+        0
+    )
 
 
 @app.on_callback_query(filters.regex(r"help_(prev|next)_(\d+)"))
 async def on_help_navigation(client, callback_query):
-    action, page_number = (
-        callback_query.data.split("_")[1],
-        int(callback_query.data.split("_")[2])
-    )
+
+    parts = callback_query.data.split("_")
+
+    action = parts[1]
+    page_number = int(parts[2])
 
     if action == "prev":
         page_number -= 1
@@ -416,6 +485,7 @@ def get_terms_keyboard():
 
 @app.on_message(filters.command("terms") & filters.private)
 async def terms(client, message):
+
     await message.reply_text(
         get_terms_text(),
         reply_markup=get_terms_keyboard()
@@ -424,6 +494,7 @@ async def terms(client, message):
 
 @app.on_callback_query(filters.regex("^see_terms$"))
 async def see_terms(client, callback_query):
+
     await callback_query.message.edit_text(
         get_terms_text(),
         reply_markup=get_terms_keyboard()
@@ -443,17 +514,20 @@ def get_plan_text():
         "Choose your preferred payment method below:\n\n"
 
         "🇮🇳 **UPI Payment**\n"
-        "• 1 Month — ₹200\n"
-        "• 3 Months — ₹500\n"
-        "• 1 Year — ₹1500\n\n"
+        "• 1 Day — ₹10\n"
+        "• 7 Days — ₹60\n"
+        "• 30 Days — ₹150\n\n"
 
         "⭐ **Telegram Stars**\n"
-        "• 1 Month — 100 ⭐\n"
-        "• 3 Months — 250 ⭐\n"
-        "• 1 Year — 800 ⭐\n\n"
+        "• 1 Day — 10 ⭐\n"
+        "• 7 Days — 50 ⭐\n"
+        "• 30 Days — 150 ⭐\n\n"
 
-        "📥 **Download Limit:** Up to 100,000 files in a single batch.\n"
-        "🛑 **Batch Modes:** Access to `/bulk` and `/batch` commands.\n\n"
+        "📥 **Download Limit:** "
+        "Up to 100,000 files in a single batch.\n"
+
+        "🛑 **Batch Modes:** "
+        "Access to `/bulk` and `/batch` commands.\n\n"
 
         "📜 Please check `/terms` before payment."
     )
@@ -461,6 +535,7 @@ def get_plan_text():
 
 @app.on_message(filters.command("plan") & filters.private)
 async def plan(client, message):
+
     await message.reply_text(
         get_plan_text(),
         reply_markup=get_main_plan_keyboard()
@@ -469,6 +544,7 @@ async def plan(client, message):
 
 @app.on_callback_query(filters.regex("^see_plan$"))
 async def see_plan(client, callback_query):
+
     await callback_query.message.edit_text(
         get_plan_text(),
         reply_markup=get_main_plan_keyboard()
@@ -483,17 +559,32 @@ async def see_plan(client, callback_query):
 
 @app.on_callback_query(filters.regex("^pay_upi_options$"))
 async def pay_upi_options(client, callback_query):
+
     await callback_query.message.edit_text(
         "🇮🇳 **Select a UPI Premium Plan:**\n\n"
-        "Choose the plan you want to purchase.",
+
+        "Choose the plan you want to purchase.\n\n"
+
+        "💰 **Available Plans:**\n"
+        "• 1 Day — ₹10\n"
+        "• 7 Days — ₹60\n"
+        "• 30 Days — ₹150",
+        
         reply_markup=get_upi_keyboard()
     )
 
     await callback_query.answer()
 
 
-@app.on_callback_query(filters.regex(r"^upi_plan_(1|3|12)$"))
+# ===================================================
+# SHOW UPI PAYMENT DETAILS
+# ===================================================
+
+@app.on_callback_query(
+    filters.regex(r"^upi_plan_(1|7|30)$")
+)
 async def show_upi_details(client, callback_query):
+
     plan_id = callback_query.data.split("_")[2]
 
     plan_data = UPI_PLANS.get(plan_id)
@@ -507,23 +598,22 @@ async def show_upi_details(client, callback_query):
 
     plan_name = plan_data["name"]
     amount = plan_data["amount"]
-    months = plan_data["months"]
-
-    # -----------------------------------------------
-    # QR IMAGE CAPTION
-    # -----------------------------------------------
+    days = plan_data["days"]
 
     upi_caption = (
         "💳 **VoidXDevs UPI Payment**\n\n"
 
         f"📦 **Plan:** {plan_name} Premium\n"
+        f"⏳ **Duration:** {days} Day(s)\n"
         f"💰 **Amount:** ₹{amount}\n"
         f"🆔 **UPI ID:** `{UPI_ID}`\n\n"
 
         "📌 **Payment Instructions:**\n"
-        f"1. Pay exactly **₹{amount}** using the QR code or UPI ID.\n"
-        "2. After payment, take a screenshot of the successful payment.\n"
-        "3. Send the screenshot in this chat.\n\n"
+        f"1. Pay exactly **₹{amount}** using the QR code "
+        "or UPI ID.\n"
+        "2. After payment, take a screenshot of the "
+        "successful payment.\n"
+        "3. Click **Send Payment Screenshot** below.\n\n"
 
         "⏳ Your payment will be verified by our admin."
     )
@@ -548,10 +638,9 @@ async def show_upi_details(client, callback_query):
     await callback_query.answer()
 
     try:
-        # Delete old plan-selection message
+
         await callback_query.message.delete()
 
-        # Send QR image with selected plan's details
         await client.send_photo(
             chat_id=callback_query.message.chat.id,
             photo=QR_CODE_URL,
@@ -559,11 +648,11 @@ async def show_upi_details(client, callback_query):
             reply_markup=buttons
         )
 
-    except Exception as e:
-        # If QR image fails, still show payment details
+    except Exception:
+
         fallback_text = (
             upi_caption +
-            "\n\n⚠️ QR image could not be loaded. "
+            "\n\n⚠️ QR image could not be loaded.\n"
             "Please use the UPI ID above."
         )
 
@@ -580,9 +669,13 @@ async def show_upi_details(client, callback_query):
 # UPI SCREENSHOT BUTTON
 # ===================================================
 
-@app.on_callback_query(filters.regex(r"^send_screenshot_(1|3|12)$"))
+@app.on_callback_query(
+    filters.regex(r"^send_screenshot_(1|7|30)$")
+)
 async def send_screenshot_info(client, callback_query):
+
     plan_id = callback_query.data.split("_")[2]
+
     plan_data = UPI_PLANS.get(plan_id)
 
     if not plan_data:
@@ -592,6 +685,11 @@ async def send_screenshot_info(client, callback_query):
         )
         return
 
+    user_id = callback_query.from_user.id
+
+    # Save selected plan temporarily
+    pending_upi_plans[user_id] = plan_id
+
     await callback_query.answer(
         "Please send your payment screenshot in this chat.",
         show_alert=True
@@ -600,9 +698,17 @@ async def send_screenshot_info(client, callback_query):
     await callback_query.message.reply_text(
         "📸 **Send your payment screenshot here.**\n\n"
 
-        f"📦 **Selected Plan:** {plan_data['name']} Premium\n"
-        f"💰 **Amount:** ₹{plan_data['amount']}\n"
-        f"🆔 **Your Telegram ID:** `{callback_query.from_user.id}`\n\n"
+        f"📦 **Selected Plan:** "
+        f"{plan_data['name']} Premium\n"
+
+        f"⏳ **Duration:** "
+        f"{plan_data['days']} Day(s)\n"
+
+        f"💰 **Amount:** "
+        f"₹{plan_data['amount']}\n"
+
+        f"🆔 **Your Telegram ID:** "
+        f"`{user_id}`\n\n"
 
         "Once received, our admin will verify your payment "
         "and activate your subscription."
@@ -615,23 +721,68 @@ async def send_screenshot_info(client, callback_query):
 
 @app.on_message(filters.photo & filters.private)
 async def handle_screenshot(client, message: Message):
+
     user = message.from_user
 
+    if not user:
+        return
+
+    user_id = user.id
+
+    # Get selected plan
+    plan_id = pending_upi_plans.get(user_id)
+
+    if plan_id:
+        plan_data = UPI_PLANS.get(plan_id)
+    else:
+        plan_data = None
+
+    # ------------------------------------------------
+    # Plan information
+    # ------------------------------------------------
+
+    if plan_data:
+
+        plan_name = plan_data["name"]
+        days = plan_data["days"]
+        amount = plan_data["amount"]
+
+        plan_info = (
+            f"📦 **Plan:** {plan_name} Premium\n"
+            f"⏳ **Duration:** {days} Day(s)\n"
+            f"💰 **Amount:** ₹{amount}\n\n"
+        )
+
+    else:
+
+        plan_info = (
+            "⚠️ **Plan:** Not detected\n"
+            "⚠️ Please verify the payment amount manually.\n\n"
+        )
+
+    # ------------------------------------------------
+    # Admin caption
+    # ------------------------------------------------
+
     admin_caption = (
-        "📥 **New Payment Screenshot Received!**\n\n"
+        "📥 **New UPI Payment Screenshot Received!**\n\n"
 
         f"👤 **User:** {user.mention}\n"
         f"🆔 **Numeric User ID:** `{user.id}`\n"
         f"🏷️ **Username:** "
         f"@{user.username if user.username else 'N/A'}\n\n"
 
-        f"📌 Verify payment and add user using:\n"
+        f"{plan_info}"
+
+        "📌 **Action:**\n"
+        f"Verify payment and add user using:\n"
         f"`/add {user.id}`"
     )
 
     primary_owner = get_primary_owner()
 
     try:
+
         await client.send_photo(
             chat_id=primary_owner,
             photo=message.photo.file_id,
@@ -640,13 +791,21 @@ async def handle_screenshot(client, message: Message):
 
         await message.reply_text(
             "✅ **Screenshot received!**\n\n"
-            "Our admins will verify your payment within "
-            "**24 hours**."
+
+            "Your payment screenshot has been sent to "
+            "our admin for verification.\n\n"
+
+            "⏳ Please wait up to **24 hours** for verification."
         )
 
+        # Remove pending state after receiving screenshot
+        pending_upi_plans.pop(user_id, None)
+
     except Exception:
+
         await message.reply_text(
-            "❌ Error sending screenshot to admin.\n\n"
+            "❌ **Error sending screenshot to admin.**\n\n"
+
             "Please contact support @VoidXDevs."
         )
 
@@ -655,20 +814,39 @@ async def handle_screenshot(client, message: Message):
 # TELEGRAM STARS PAYMENT
 # ===================================================
 
-@app.on_callback_query(filters.regex("^pay_stars_options$"))
+@app.on_callback_query(
+    filters.regex("^pay_stars_options$")
+)
 async def pay_stars_options(client, callback_query):
+
     await callback_query.message.edit_text(
         "⭐ **Select a Telegram Stars Premium Plan:**\n\n"
-        "Choose a plan below. After selecting it, "
-        "Telegram's official Stars payment invoice will open.",
+
+        "Choose a plan below.\n\n"
+
+        "⭐ **Available Plans:**\n"
+        "• 1 Day — 10 ⭐\n"
+        "• 7 Days — 50 ⭐\n"
+        "• 30 Days — 150 ⭐\n\n"
+
+        "After selecting a plan, Telegram's official "
+        "Stars payment invoice will open.",
+
         reply_markup=get_stars_keyboard()
     )
 
     await callback_query.answer()
 
 
-@app.on_callback_query(filters.regex(r"^buy_stars_(1|3|12)$"))
+# ===================================================
+# CREATE TELEGRAM STARS INVOICE
+# ===================================================
+
+@app.on_callback_query(
+    filters.regex(r"^buy_stars_(1|7|30)$")
+)
 async def send_stars_invoice(client, callback_query):
+
     plan_id = callback_query.data.split("_")[2]
 
     plan_data = STARS_PLANS.get(plan_id)
@@ -680,19 +858,23 @@ async def send_stars_invoice(client, callback_query):
         )
         return
 
-    months = plan_data["months"]
+    days = plan_data["days"]
     plan_name = plan_data["name"]
     stars = plan_data["stars"]
 
     user_id = callback_query.from_user.id
 
     # Unique payload for this user and plan
-    payload = f"stars_plan_{plan_id}_{user_id}"
+    payload = (
+        f"stars_plan_{plan_id}_{user_id}"
+    )
 
-    title = f"VoidXDevs {plan_name} Premium"
+    title = (
+        f"VoidXDevs {plan_name} Premium"
+    )
 
     description = (
-        f"Premium subscription for {months} month(s). "
+        f"Premium subscription for {days} day(s). "
         f"Price: {stars} Telegram Stars."
     )
 
@@ -704,7 +886,7 @@ async def send_stars_invoice(client, callback_query):
     ]
 
     try:
-        # Telegram Stars currency
+
         await client.send_invoice(
             chat_id=callback_query.message.chat.id,
             title=title,
@@ -719,7 +901,8 @@ async def send_stars_invoice(client, callback_query):
             f"⭐ Payment invoice created for {stars} Stars."
         )
 
-    except Exception as e:
+    except Exception:
+
         await callback_query.answer(
             "❌ Unable to create payment invoice.",
             show_alert=True
@@ -731,9 +914,14 @@ async def send_stars_invoice(client, callback_query):
 # ===================================================
 
 @app.on_pre_checkout_query()
-async def pre_checkout_handler(client, query: PreCheckoutQuery):
+async def pre_checkout_handler(
+    client,
+    query: PreCheckoutQuery
+):
+
     try:
         await query.answer(ok=True)
+
     except Exception:
         pass
 
@@ -743,23 +931,31 @@ async def pre_checkout_handler(client, query: PreCheckoutQuery):
 # ===================================================
 
 @app.on_message(filters.successful_payment)
-async def successful_payment_handler(client, message: Message):
+async def successful_payment_handler(
+    client,
+    message: Message
+):
+
     payment = message.successful_payment
     user = message.from_user
 
+    if not payment or not user:
+        return
+
     payload = payment.invoice_payload
 
-    # -----------------------------------------------
-    # Extract selected plan from payload
-    # payload format:
+    # ------------------------------------------------
+    # Extract plan from payload
+    #
     # stars_plan_1_USERID
-    # stars_plan_3_USERID
-    # stars_plan_12_USERID
-    # -----------------------------------------------
+    # stars_plan_7_USERID
+    # stars_plan_30_USERID
+    # ------------------------------------------------
 
     plan_id = None
 
     if payload.startswith("stars_plan_"):
+
         parts = payload.split("_")
 
         if len(parts) >= 4:
@@ -767,20 +963,76 @@ async def successful_payment_handler(client, message: Message):
 
     plan_data = STARS_PLANS.get(plan_id)
 
+    # ------------------------------------------------
+    # Validate payment
+    # ------------------------------------------------
+
     if plan_data:
+
         plan_name = plan_data["name"]
-        months = plan_data["months"]
-        stars = plan_data["stars"]
+        days = plan_data["days"]
+        expected_stars = plan_data["stars"]
+
     else:
+
         plan_name = "Unknown"
-        months = 1
-        stars = payment.total_amount
+        days = 0
+        expected_stars = None
 
-    transaction_id = payment.telegram_payment_charge_id
+    paid_stars = payment.total_amount
 
-    # -----------------------------------------------
+    transaction_id = (
+        payment.telegram_payment_charge_id
+    )
+
+    # ------------------------------------------------
+    # Payment amount verification
+    # ------------------------------------------------
+
+    if expected_stars is not None:
+
+        if paid_stars != expected_stars:
+
+            warning_text = (
+                "⚠️ **Payment Amount Mismatch**\n\n"
+
+                f"Expected: **{expected_stars} ⭐**\n"
+                f"Received: **{paid_stars} ⭐**\n\n"
+
+                "Please contact support."
+            )
+
+            await message.reply_text(
+                warning_text
+            )
+
+            try:
+
+                await client.send_message(
+                    chat_id=get_primary_owner(),
+                    text=(
+                        "🚨 **Stars Payment Mismatch!**\n\n"
+
+                        f"👤 **User:** {user.mention}\n"
+                        f"🆔 **User ID:** `{user.id}`\n"
+                        f"📦 **Plan:** {plan_name}\n"
+                        f"💰 **Expected:** "
+                        f"{expected_stars} ⭐\n"
+                        f"💰 **Received:** "
+                        f"{paid_stars} ⭐\n"
+                        f"📑 **Charge ID:** "
+                        f"`{transaction_id}`"
+                    )
+                )
+
+            except Exception:
+                pass
+
+            return
+
+    # =================================================
     # USER RECEIPT
-    # -----------------------------------------------
+    # =================================================
 
     receipt_user = (
         "🧾 **VoidXDevs Official Purchase Receipt**\n\n"
@@ -788,39 +1040,55 @@ async def successful_payment_handler(client, message: Message):
         f"👤 **Customer:** {user.mention}\n"
         f"🆔 **User ID:** `{user.id}`\n"
         f"📦 **Plan:** {plan_name} Premium\n"
-        f"💰 **Paid:** {payment.total_amount} Telegram Stars ⭐\n"
-        f"📑 **Transaction ID:** `{transaction_id}`\n\n"
+        f"⏳ **Duration:** {days} Day(s)\n"
+        f"💰 **Paid:** "
+        f"{paid_stars} Telegram Stars ⭐\n"
+        f"📑 **Transaction ID:** "
+        f"`{transaction_id}`\n\n"
 
         "✅ **Payment Verified Successfully!**\n"
-        "Your payment has been received."
+
+        "Your Telegram Stars payment has been "
+        "received successfully.\n\n"
+
+        "⏳ Premium activation will be handled by "
+        "our admin."
     )
 
-    # -----------------------------------------------
+    # =================================================
     # ADMIN RECEIPT
-    # -----------------------------------------------
+    # =================================================
 
     receipt_admin = (
         "🌟 **New Telegram Stars Payment Received!**\n\n"
 
         f"👤 **User:** {user.mention}\n"
         f"🆔 **Numeric User ID:** `{user.id}`\n"
+        f"🏷️ **Username:** "
+        f"@{user.username if user.username else 'N/A'}\n\n"
+
         f"📦 **Plan:** {plan_name} Premium\n"
-        f"💰 **Paid:** {payment.total_amount} Stars ⭐\n"
+        f"⏳ **Duration:** {days} Day(s)\n"
+        f"💰 **Paid:** {paid_stars} Stars ⭐\n"
         f"📑 **Charge ID:** `{transaction_id}`\n\n"
 
-        f"📌 Add premium using:\n"
+        "📌 **Add Premium:**\n"
         f"`/add {user.id}`"
     )
 
     # Send receipt to user
-    await message.reply_text(receipt_user)
+    await message.reply_text(
+        receipt_user
+    )
 
     # Send payment notification to owner
     try:
+
         await client.send_message(
             chat_id=get_primary_owner(),
             text=receipt_admin
         )
+
     except Exception:
         pass
 
@@ -829,8 +1097,11 @@ async def successful_payment_handler(client, message: Message):
 # OPTIONAL: /PAY COMMAND
 # ===================================================
 
-@app.on_message(filters.command("pay") & filters.private)
+@app.on_message(
+    filters.command("pay") & filters.private
+)
 async def pay_command(client, message):
+
     await message.reply_text(
         get_plan_text(),
         reply_markup=get_main_plan_keyboard()
